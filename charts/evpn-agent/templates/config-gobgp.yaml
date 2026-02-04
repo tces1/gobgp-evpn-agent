@@ -1,0 +1,64 @@
+{{- if .Values.gobgp.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "evpn-agent.fullname" . }}-gobgp
+  labels:
+    {{- include "evpn-agent.labels" . | nindent 4 }}
+data:
+  gobgpd.toml: |
+    [global.config]
+      as = {{ .Values.gobgp.asn }}
+      router-id = "__POD_IP__"
+    {{- if .Values.gobgp.routeServer.enabled }}
+    [global.route-server.config]
+      enabled = true
+    {{- end }}
+
+    {{- if and .Values.gobgp.dynamic.enabled .Values.gobgp.dynamic.prefix }}
+    [[peer-groups]]
+      [peer-groups.config]
+        peer-group-name = "dyn-peers"
+        peer-as = {{ .Values.gobgp.dynamic.peerAs }}
+      {{- if .Values.gobgp.rr.enabled }}
+      [peer-groups.route-reflector.config]
+        route-reflector-client = {{ .Values.gobgp.rr.client }}
+        route-reflector-cluster-id = "__POD_IP__"
+      {{- end }}
+      [peer-groups.ebgp-multihop.config]
+        enabled = true
+        multihop-ttl = {{ .Values.gobgp.multihopTtl }}
+      [[peer-groups.afi-safis]]
+        [peer-groups.afi-safis.config]
+          afi-safi-name = "ipv4-unicast"
+      [[peer-groups.afi-safis]]
+        [peer-groups.afi-safis.config]
+          afi-safi-name = "l2vpn-evpn"
+    [[dynamic-neighbors]]
+      [dynamic-neighbors.config]
+        prefix = "{{ .Values.gobgp.dynamic.prefix }}"
+        peer-group = "dyn-peers"
+    {{- end }}
+
+    {{- range (default (list) .Values.gobgp.neighbors) }}
+    {{- if and .address (ne .address "") }}
+    {{- if ne .address "__POD_IP__" }}
+    [[neighbors]]
+      [neighbors.config]
+        neighbor-address = "{{ .address }}"
+        peer-as = {{ .asn }}
+      [neighbors.transport.config]
+        local-address = "__POD_IP__"
+      [neighbors.ebgp-multihop.config]
+        enabled = true
+        multihop-ttl = {{ default $.Values.gobgp.multihopTtl .multihopTtl }}
+      [[neighbors.afi-safis]]
+        [neighbors.afi-safis.config]
+          afi-safi-name = "ipv4-unicast"
+      [[neighbors.afi-safis]]
+        [neighbors.afi-safis.config]
+          afi-safi-name = "l2vpn-evpn"
+    {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}

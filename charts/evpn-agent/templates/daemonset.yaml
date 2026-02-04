@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "evpn-agent.fullname" . }}
+  labels:
+    {{- include "evpn-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "evpn-agent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "evpn-agent.labels" . | nindent 8 }}
+      {{- if .Values.podAnnotations }}
+      annotations:
+        {{- range $k, $v := .Values.podAnnotations }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+      {{- end }}
+    spec:
+      hostNetwork: {{ .Values.hostNetwork }}
+      dnsPolicy: {{ ternary "ClusterFirstWithHostNet" "ClusterFirst" .Values.hostNetwork }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      serviceAccountName: {{ if .Values.serviceAccount.create }}{{ default (include "evpn-agent.fullname" .) .Values.serviceAccount.name }}{{ else }}{{ default "default" .Values.serviceAccount.name }}{{ end }}
+      terminationGracePeriodSeconds: 5
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- end }}
+      {{- if .Values.gobgp.enabled }}
+      initContainers:
+        - name: gobgp-configure
+          image: "{{ .Values.init.image.repository }}:{{ .Values.init.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              ip=$(hostname -i | awk '{print $1}')
+              sed "s|__POD_IP__|$ip|g" /config-template/gobgpd.toml > /config/gobgpd.toml
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          volumeMounts:
+            - name: gobgp-config-template
+              mountPath: /config-template
+            - name: gobgp-config
+              mountPath: /config
+      {{- end }}
+
+      containers:
+        - name: evpn-agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "-config=/etc/evpn-agent/config.yaml"
+          securityContext:
+            privileged: {{ .Values.securityContext.privileged }}
+            {{- if .Values.securityContext.capabilities }}
+            capabilities:
+              add:
+              {{- range .Values.securityContext.capabilities.add }}
+                - {{ . }}
+              {{- end }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: agent-config
+              mountPath: /etc/evpn-agent
+        {{- if .Values.gobgp.enabled }}
+        - name: gobgpd
+          image: "{{ .Values.gobgp.image }}:{{ .Values.gobgp.tag }}"
+          imagePullPolicy: {{ .Values.gobgp.pullPolicy }}
+          command:
+            - gobgpd
+          args:
+            - "-f"
+            - "/etc/gobgpd/gobgpd.toml"
+            - "--api-hosts=0.0.0.0:50051"
+            - "-l"
+            - "{{ .Values.gobgp.logLevel }}"
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: LOCAL_ADDRESS
+              value: "$(POD_IP)"
+            - name: ROUTER_ID
+              value: "{{ default "" .Values.gobgp.routerID }}"
+          volumeMounts:
+            - name: gobgp-config
+              mountPath: /etc/gobgpd
+        {{- end }}
+      volumes:
+        - name: agent-config
+          configMap:
+            name: {{ include "evpn-agent.fullname" . }}-agent
+        {{- if .Values.gobgp.enabled }}
+        - name: gobgp-config-template
+          configMap:
+            name: {{ include "evpn-agent.fullname" . }}-gobgp
+            defaultMode: 0444
+        - name: gobgp-config
+          emptyDir: {}
+        {{- end }}

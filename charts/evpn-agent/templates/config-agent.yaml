@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "evpn-agent.fullname" . }}-agent
+  labels:
+    {{- include "evpn-agent.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    logLevel: "{{ .Values.agent.logLevel }}"
+    advertiseSelf: {{ .Values.agent.advertiseSelf }}
+    communityAsn: {{ .Values.agent.communityAsn }}
+    gobgp:
+      address: "{{ .Values.agent.gobgpAddress }}"
+      timeout: "{{ .Values.agent.gobgpTimeout }}"
+    node:
+      localInterface: "{{ .Values.agent.localInterface }}"
+      localAddress: "{{ .Values.agent.localAddress }}"
+      vxlanPort: {{ .Values.agent.vxlanPort }}
+      skipLinkCleanup: {{ .Values.agent.skipLinkCleanup }}
+      autoRecreateVxlan: {{ .Values.agent.autoRecreateVxlan }}
+    {{- if .Values.agent.vnis }}
+    vnis:
+    {{- range .Values.agent.vnis }}
+      - id: {{ .id }}
+        community: "{{ .community }}"
+        device: "{{ default (printf "vxlan%d" (int .id)) .device }}"
+        underlayInterface: "{{ default $.Values.agent.localInterface .underlayInterface }}"
+    {{- end }}
+    {{- end }}
