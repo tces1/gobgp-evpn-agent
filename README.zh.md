@@ -77,6 +77,9 @@ communityAsn: 65000
 - 撤销验证：删除某个 Spoke 的 `vxlan10010` 后，agent 触发 BGP withdraw，其他节点 RIB 中该 /32 被撤销；数据面 ping 失败（符合预期）。
 - 多 VNI 隔离：Pod1/Pod2 共享 `vxlan10010`，Pod1/Pod3 共享 `vxlan10011`。同 VNI ping 成功，跨 VNI ping 失败；FDB 按 VNI 隔离。
 
+## 进阶场景：VTEP + macvtap 做虚机仿真
+在 VTEP 上创建 macvtap 后，可在容器内运行 QEMU 或 Cloud-Hypervisor 并将虚拟网卡接入该 macvtap，用于模拟真实主机/虚机接入 VTEP，从而做更贴近真实环境的 L2 使用场景验证。
+
 ## 原理概览
 evpn-agent 做两件事：  
 1) **监听 BGP RIB**：通过 gobgp gRPC `WatchEvent(BEST)` 订阅 IPv4-unicast 路由；根据 community -> VNI 映射，把路由前缀（/32）转化为远端 VTEP 列表。  

@@ -80,6 +80,9 @@ Behavior:
 - Withdrawal verify: deleting `vxlan10010` on a Spoke triggers BGP withdraw and remote RIB removal; ping fails as expected.
 - Multi-VNI isolation: create `vxlan10010` between Pod1/Pod2 and `vxlan10011` between Pod1/Pod3. In-VNI pings succeed; cross-VNI pings fail. FDB entries stay separate per VNI.
 
+## Advanced Scenario: VTEP + macvtap for VM emulation
+If you create a macvtap device on the VTEP, you can run QEMU or Cloud-Hypervisor inside the container and attach a virtual NIC to it. This is useful for emulating real hosts/VMs behind the VTEP and validating L2 EVPN behavior end-to-end.
+
 ## How It Works
 The agent does two things:
 1) **Watch BGP RIB**: `WatchEvent(BEST)` over gRPC. Community → VNI mapping turns /32 prefixes into remote VTEP list.
